@@ -54,3 +54,6 @@ if ($existingTask) {
     Add-Content -Path $logFile -Value ("`n" + (Get-Date) + ": Scheduled task '$taskName' created successfully.")
     Add-Content -Path $logFile -Value ("This task runs every Sunday at 11:30 PM. It installs all available Windows Updates, logs each one with result, and reboots the computer. The task wakes the PC if it's asleep.")
 }
+
+# Pause so you can see output during testing
+Read-Host -Prompt "Press Enter to exit"
