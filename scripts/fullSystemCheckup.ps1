@@ -16,7 +16,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Prepare logging directory and start transcript
-$logDir = 'C:\AITS\Logs'
+$logDir = 'C:\.Logs'
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 $timestamp = Get-Date -Format 'MM-dd-yy_HH-mm-ss'
 $logPath = Join-Path $logDir "${timestamp}.txt"

@@ -11,7 +11,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit
 }
 
-$logFolder = "C:\AITS\Logs"
+$logFolder = "C:\.Logs"
 $logFile = "$logFolder\CleanupLog.txt"
 
 if (!(Test-Path -Path $logFolder)) {
