@@ -1,18 +1,4 @@
-# launcher.ps1 — Dynamic Launcher with Elevation, Policy Bypass, and Looping Execution
 
-# 1) Bypass execution policy for this session
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-
-# 2) Self-elevation — ensure running as Administrator
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "Relaunching as Administrator..." -ForegroundColor Yellow
-    Start-Process powershell.exe -Verb RunAs -ArgumentList @(
-        '-NoProfile',
-        '-ExecutionPolicy','Bypass',
-        '-Command', "iex (irm 'https://raw.githubusercontent.com/chaco-win/tools/main/launcher.ps1')"
-    ) -Wait
-    exit
-}
 
 # 3) Main loop: list, execute, ask to repeat
 $baseUrl = "https://raw.githubusercontent.com/chaco-win/tools/main/scripts/"
