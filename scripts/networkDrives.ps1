@@ -36,6 +36,7 @@ $currentDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -li
 $currentDriveLetters = $currentDrives.Name
 
 # Check existing mapped drives for connectivity
+Write-Host "`n--- Drive Status Report ---"
 foreach ($drive in $currentDrives) {
     $driveLetter = $drive.Name + ":"
     $drivePath = $drive.Root
@@ -55,8 +56,8 @@ foreach ($drive in $currentDrives) {
             Log-Message "ERROR: Failed to re-map $driveLetter to $drivePath. ExitCode: $exitCode"
         }
     } else {
-        Write-Host "Drive $driveLetter is still connected."
-        Log-Message "Drive $driveLetter is still connected."
+        Write-Host "Drive $driveLetter is connected to $drivePath."
+        Log-Message "Drive $driveLetter is connected to $drivePath."
     }
 }
 
@@ -76,23 +77,27 @@ while ($addDrives -eq 'Y') {
         $path = Read-Host "Enter network path for drive letter $letter (e.g., \\server\share)"
     }
 
-    if (-not (Get-PSDrive -Name $letter -ErrorAction SilentlyContinue)) {
-        $exitCode = (Start-Process -FilePath "net" -ArgumentList "use $letter $path /persistent:yes" -NoNewWindow -Wait -PassThru).ExitCode
+    # Remove and re-map if it already exists
+    if (Get-PSDrive -Name $letter -ErrorAction SilentlyContinue) {
+        Write-Host "Drive ${letter}: already exists. Removing and re-mapping."
+        Log-Message "Drive ${letter}: already exists. Removing."
+        net use ${letter}: /delete /y | Out-Null
+    }
 
-        if ($exitCode -eq 0) {
-            Write-Host "Drive ${letter}: mapped successfully to $path"
-            Log-Message "Drive ${letter}: mapped successfully to $path"
-        } else {
-            Write-Warning "Failed to map drive ${letter}: to $path. ExitCode: $exitCode"
-            Log-Message "ERROR: Failed to map drive ${letter}: to $path. ExitCode: $exitCode"
-        }
+    $exitCode = (Start-Process -FilePath "net" -ArgumentList "use ${letter}: $path /persistent:yes" -NoNewWindow -Wait -PassThru).ExitCode
+
+    if ($exitCode -eq 0) {
+        Write-Host "Drive ${letter}: mapped successfully to $path"
+        Log-Message "Drive ${letter}: mapped successfully to $path"
     } else {
-        Write-Warning "Drive $letter already exists."
-        Log-Message "WARNING: Drive $letter already exists."
+        Write-Warning "Failed to map drive ${letter}: to $path. ExitCode: $exitCode"
+        Log-Message "ERROR: Failed to map drive ${letter}: to $path. ExitCode: $exitCode"
     }
 
     $addDrives = Read-Host "Do you want to add another drive? (Y/N)"
 }
+
+Write-Host "`n--- Drive Mapping Complete ---"
 
 # Summary output
 if ($error.Count -gt 0) {

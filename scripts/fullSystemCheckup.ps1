@@ -14,9 +14,18 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Prepare logging directory and start transcript
 $logDir = 'C:\.Logs'
-if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+
+# Create scanLogs subfolder
+$scanLogDir = Join-Path $logDir 'scanLogs'
+if (-not (Test-Path $scanLogDir)) {
+    New-Item -ItemType Directory -Path $scanLogDir -Force | Out-Null
+}
+
 $timestamp = Get-Date -Format 'MM-dd-yy_HH-mm-ss'
-$logPath = Join-Path $logDir "${timestamp}.txt"
+$logPath   = Join-Path $logDir  \"${timestamp}.txt\"
 Start-Transcript -Path $logPath
 
 # --------- PART 1: Disable Adobe-related Scheduled Tasks ---------
