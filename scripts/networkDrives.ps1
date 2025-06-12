@@ -36,6 +36,34 @@ Write-Host "`n--- Raw Net Use Output ---"
 (net use) | ForEach-Object { Write-Host $_ }
 
 # Skip filtering, no drive reconnect logic here since $currentDrives is undefined
+Write-Host "`n--- Checking Existing Drive Mappings ---"
+
+$mappedDrives = (net use) -match "^[A-Z]:"
+foreach ($line in $mappedDrives) {
+    if ($line -match "^([A-Z]):\s+(\\\\[^\\s]+)") {
+        $drive = $matches[1]
+        $path = $matches[2]
+        $full = "$drive`:"
+
+        if (-not (Test-Path $full)) {
+            Write-Host "[$full] is disconnected. Reconnecting..." -ForegroundColor Red
+            Log-Message "Drive $full is disconnected. Attempting reconnect."
+            net use $full /delete /y | Out-Null
+            $code = (Start-Process -FilePath "net" -ArgumentList "use $full $path /persistent:yes" -NoNewWindow -Wait -PassThru).ExitCode
+            if ($code -eq 0) {
+                Write-Host "[$full] reconnected to $path" -ForegroundColor Yellow
+                Log-Message "Drive $full reconnected to $path"
+            } else {
+                Write-Warning "Failed to reconnect $full to $path"
+                Log-Message "ERROR: Reconnect failed for $full to $path"
+            }
+        } else {
+            Write-Host "[$full] is connected to $path" -ForegroundColor Green
+            Log-Message "Drive $full is connected to $path"
+        }
+    }
+}
+
 
 # Prompt to add known or custom drives after displaying net use
 $addDrives = Read-Host "Do you want to add a network drive? (Y/N)"
