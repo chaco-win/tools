@@ -16,7 +16,7 @@ try {
         }
 
         # Display options
-        Write-Host "`nSelect a script to run from 'scripts/' folder:" -ForegroundColor Cyan
+        Write-Host "`nSelect a script to run from 'scripts' folder:" -ForegroundColor Cyan
         for ($i = 0; $i -lt $ps1Files.Count; $i++) {
             Write-Host "[$($i+1)] $($ps1Files[$i].name)"
         }
