@@ -7,17 +7,29 @@ $knownDrives = @{
     'S' = '\\capsov.local\Shares\SharedFiles'
 }
 
+# Ensure error list is clear
+$error.Clear()
+
 # Create log directory and log file
 $logDir = 'C:\.Logs'
 if (-not (Test-Path $logDir)) {
-    New-Item -Path $logDir -ItemType Directory | Out-Null
+    try {
+        New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    } catch {
+        Write-Host "Failed to create log directory at $logDir."
+        Read-Host -Prompt "Press Enter to exit"
+        exit
+    }
 }
 $logFile = "$logDir\drive_mapping.log"
 
 Function Log-Message($message) {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$timestamp`t$message" | Out-File -FilePath $logFile -Append
+    "$timestamp`t$message" | Out-File -FilePath $logFile -Append -Encoding UTF8
 }
+
+# Log session start
+Log-Message "--- New Script Run ---"
 
 # Get currently mapped drives
 $currentDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -like '\\*' }
@@ -33,13 +45,14 @@ foreach ($drive in $currentDrives) {
         Log-Message "Drive $driveLetter is disconnected. Removing."
         net use $driveLetter /delete /y | Out-Null
 
-        try {
-            net use $driveLetter $drivePath /persistent:yes | Out-Null
+        $exitCode = (Start-Process -FilePath "net" -ArgumentList "use $driveLetter $drivePath /persistent:yes" -NoNewWindow -Wait -PassThru).ExitCode
+
+        if ($exitCode -eq 0) {
             Write-Host "Drive $driveLetter re-mapped successfully to $drivePath"
             Log-Message "Drive $driveLetter re-mapped successfully to $drivePath"
-        } catch {
-            Write-Warning "Failed to re-map $driveLetter to $drivePath. Error: $_"
-            Log-Message "ERROR: Failed to re-map $driveLetter to $drivePath. $_"
+        } else {
+            Write-Warning "Failed to re-map $driveLetter to $drivePath. ExitCode: $exitCode"
+            Log-Message "ERROR: Failed to re-map $driveLetter to $drivePath. ExitCode: $exitCode"
         }
     } else {
         Write-Host "Drive $driveLetter is still connected."
@@ -53,7 +66,7 @@ $addDrives = Read-Host "Do you want to add a network drive? (Y/N)"
 while ($addDrives -eq 'Y') {
     Write-Host "Available predefined drives to add:"
     foreach ($key in $knownDrives.Keys) {
-        Write-Host " - Drive $key:`t$($knownDrives[$key])"
+        Write-Host " - Drive ${key}:`t$($knownDrives[$key])"
     }
 
     $letter = Read-Host "Enter the drive letter you want to add (from above or new)"
@@ -63,22 +76,29 @@ while ($addDrives -eq 'Y') {
         $path = Read-Host "Enter network path for drive letter $letter (e.g., \\server\share)"
     }
 
-    try {
-        if (-not (Get-PSDrive -Name $letter -ErrorAction SilentlyContinue)) {
-            net use $letter $path /persistent:yes | Out-Null
-            Write-Host "Drive $letter: mapped successfully to $path"
-            Log-Message "Drive $letter: mapped successfully to $path"
+    if (-not (Get-PSDrive -Name $letter -ErrorAction SilentlyContinue)) {
+        $exitCode = (Start-Process -FilePath "net" -ArgumentList "use $letter $path /persistent:yes" -NoNewWindow -Wait -PassThru).ExitCode
+
+        if ($exitCode -eq 0) {
+            Write-Host "Drive ${letter}: mapped successfully to $path"
+            Log-Message "Drive ${letter}: mapped successfully to $path"
         } else {
-            Write-Warning "Drive $letter already exists."
-            Log-Message "WARNING: Drive $letter already exists."
+            Write-Warning "Failed to map drive ${letter}: to $path. ExitCode: $exitCode"
+            Log-Message "ERROR: Failed to map drive ${letter}: to $path. ExitCode: $exitCode"
         }
-    } catch {
-        Write-Warning "Failed to map drive $letter: to $path. Error: $_"
-        Log-Message "ERROR: Failed to map drive $letter: to $path. $_"
+    } else {
+        Write-Warning "Drive $letter already exists."
+        Log-Message "WARNING: Drive $letter already exists."
     }
 
     $addDrives = Read-Host "Do you want to add another drive? (Y/N)"
 }
 
-# Prevent window from closing immediately
-Read-Host -Prompt "Press Enter to exit"
+# Summary output
+if ($error.Count -gt 0) {
+    Write-Host "`nOne or more PowerShell errors occurred (see log for net use errors):"
+    $error | ForEach-Object { Write-Host " - $_" }
+} else {
+    Write-Host "`nAll operations completed successfully."
+}
+Read-Host -Prompt "Press Enter to close"

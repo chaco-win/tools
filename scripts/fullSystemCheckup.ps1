@@ -1,21 +1,14 @@
 # FullSystemCleanup.ps1
 
-# Bypass execution policy for this session to allow UNC script execution
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+#Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
-# Self-elevation — ensure running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Relaunching as Administrator..." -ForegroundColor Yellow
-    # Use the current script's actual path
-    $scriptPath = $MyInvocation.MyCommand.Path
-    $localTemp  = Join-Path $env:TEMP ([IO.Path]::GetFileName($scriptPath))
-    Copy-Item -Path $scriptPath -Destination $localTemp -Force
-    Start-Process -FilePath "powershell.exe" -ArgumentList @(
-        '-NoProfile',
-        '-ExecutionPolicy','Bypass',
-        '-File',$localTemp
-    ) -Verb RunAs -ErrorAction Stop
-    
+    $script = $MyInvocation.MyCommand.Definition
+    $localTemp = Join-Path $env:TEMP ([IO.Path]::GetFileName($script))
+    Copy-Item -Path $script -Destination $localTemp -Force
+    Start-Process -FilePath "powershell.exe" -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$localTemp) -Verb RunAs -ErrorAction Stop
+    exit
 }
 
 
