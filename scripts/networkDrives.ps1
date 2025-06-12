@@ -31,37 +31,13 @@ Function Log-Message($message) {
 # Log session start
 Log-Message "--- New Script Run ---"
 
-# Get currently mapped drives
-$currentDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -like '\\*' }
-$currentDriveLetters = $currentDrives.Name
+# Display full net use output
+Write-Host "`n--- Raw Net Use Output ---"
+(net use) | ForEach-Object { Write-Host $_ }
 
-# Check existing mapped drives for connectivity
-Write-Host "`n--- Drive Status Report ---"
-foreach ($drive in $currentDrives) {
-    $driveLetter = $drive.Name + ":"
-    $drivePath = $drive.Root
+# Skip filtering, no drive reconnect logic here since $currentDrives is undefined
 
-    if (-not (Test-Path $driveLetter)) {
-        Write-Host "Drive $driveLetter is disconnected. Removing and re-mapping."
-        Log-Message "Drive $driveLetter is disconnected. Removing."
-        net use $driveLetter /delete /y | Out-Null
-
-        $exitCode = (Start-Process -FilePath "net" -ArgumentList "use $driveLetter $drivePath /persistent:yes" -NoNewWindow -Wait -PassThru).ExitCode
-
-        if ($exitCode -eq 0) {
-            Write-Host "Drive $driveLetter re-mapped successfully to $drivePath"
-            Log-Message "Drive $driveLetter re-mapped successfully to $drivePath"
-        } else {
-            Write-Warning "Failed to re-map $driveLetter to $drivePath. ExitCode: $exitCode"
-            Log-Message "ERROR: Failed to re-map $driveLetter to $drivePath. ExitCode: $exitCode"
-        }
-    } else {
-        Write-Host "Drive $driveLetter is connected to $drivePath."
-        Log-Message "Drive $driveLetter is connected to $drivePath."
-    }
-}
-
-# Prompt to add known or custom drives after disconnected drives are handled
+# Prompt to add known or custom drives after displaying net use
 $addDrives = Read-Host "Do you want to add a network drive? (Y/N)"
 
 while ($addDrives -eq 'Y') {
