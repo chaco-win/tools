@@ -14,9 +14,8 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
         '-ExecutionPolicy','Bypass',
         '-File',$localTemp
     ) -Verb RunAs -ErrorAction Stop
-  
+    
 }
-
 
 # Prepare logging directory and start transcript
 $logDir = 'C:\.Logs'
