@@ -4,19 +4,19 @@
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 # Self-elevation — ensure running as Administrator
-$baseUrl    = 'https://raw.githubusercontent.com/chaco-win/tools/main'
-$scriptName = 'FullSystemCleanup.ps1'
-$scriptUrl  = "$baseUrl/$scriptName"
-
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Relaunching as Administrator..." -ForegroundColor Yellow
-    Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList @(
+    $scriptPath = $PSCommandPath
+    $localTemp  = Join-Path $env:TEMP ([IO.Path]::GetFileName($scriptPath))
+    Copy-Item -Path $scriptPath -Destination $localTemp -Force
+    Start-Process -FilePath "powershell.exe" -ArgumentList @(
         '-NoProfile',
         '-ExecutionPolicy','Bypass',
-        '-Command',"iex (irm '$scriptUrl')"
-    ) -ErrorAction Stop
-    
+        '-File',$localTemp
+    ) -Verb RunAs -ErrorAction Stop
+  
 }
+
 
 # Prepare logging directory and start transcript
 $logDir = 'C:\.Logs'
