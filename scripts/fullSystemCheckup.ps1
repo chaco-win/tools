@@ -6,7 +6,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 # Self-elevation — ensure running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Relaunching as Administrator..." -ForegroundColor Yellow
-    $scriptPath = $PSCommandPath
+    # Use the current script's actual path
+    $scriptPath = $MyInvocation.MyCommand.Path
     $localTemp  = Join-Path $env:TEMP ([IO.Path]::GetFileName($scriptPath))
     Copy-Item -Path $scriptPath -Destination $localTemp -Force
     Start-Process -FilePath "powershell.exe" -ArgumentList @(
@@ -16,6 +17,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     ) -Verb RunAs -ErrorAction Stop
     
 }
+
 
 # Prepare logging directory and start transcript
 $logDir = 'C:\.Logs'
