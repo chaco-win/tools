@@ -12,7 +12,7 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Copy-Item -Path $script -Destination $localTemp -Force
     # Launch elevated from local copy
     Start-Process -FilePath "powershell.exe" -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$localTemp) -Verb RunAs -ErrorAction Stop
-    exit
+    
 }
 
 # Prepare logging directory and start transcript
