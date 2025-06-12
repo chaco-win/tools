@@ -7,6 +7,18 @@ $knownDrives = @{
     'S' = '\\capsov.local\Shares\SharedFiles'
 }
 
+# Create log directory and log file
+$logDir = 'C:\.Logs'
+if (-not (Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory | Out-Null
+}
+$logFile = "$logDir\drive_mapping.log"
+
+Function Log-Message($message) {
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "$timestamp`t$message" | Out-File -FilePath $logFile -Append
+}
+
 # Get currently mapped drives
 $currentDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -like '\\*' }
 $currentDriveLetters = $currentDrives.Name
@@ -18,16 +30,20 @@ foreach ($drive in $currentDrives) {
 
     if (-not (Test-Path $driveLetter)) {
         Write-Host "Drive $driveLetter is disconnected. Removing and re-mapping."
+        Log-Message "Drive $driveLetter is disconnected. Removing."
         net use $driveLetter /delete /y | Out-Null
 
         try {
-            New-PSDrive -Name $drive.Name -PSProvider FileSystem -Root $drivePath -Persist
+            net use $driveLetter $drivePath /persistent:yes | Out-Null
             Write-Host "Drive $driveLetter re-mapped successfully to $drivePath"
+            Log-Message "Drive $driveLetter re-mapped successfully to $drivePath"
         } catch {
             Write-Warning "Failed to re-map $driveLetter to $drivePath. Error: $_"
+            Log-Message "ERROR: Failed to re-map $driveLetter to $drivePath. $_"
         }
     } else {
         Write-Host "Drive $driveLetter is still connected."
+        Log-Message "Drive $driveLetter is still connected."
     }
 }
 
@@ -48,11 +64,21 @@ while ($addDrives -eq 'Y') {
     }
 
     try {
-        New-PSDrive -Name $letter -PSProvider FileSystem -Root $path -Persist
-        Write-Host "Drive $letter: mapped successfully to $path"
+        if (-not (Get-PSDrive -Name $letter -ErrorAction SilentlyContinue)) {
+            net use $letter $path /persistent:yes | Out-Null
+            Write-Host "Drive $letter: mapped successfully to $path"
+            Log-Message "Drive $letter: mapped successfully to $path"
+        } else {
+            Write-Warning "Drive $letter already exists."
+            Log-Message "WARNING: Drive $letter already exists."
+        }
     } catch {
         Write-Warning "Failed to map drive $letter: to $path. Error: $_"
+        Log-Message "ERROR: Failed to map drive $letter: to $path. $_"
     }
 
     $addDrives = Read-Host "Do you want to add another drive? (Y/N)"
 }
+
+# Prevent window from closing immediately
+Read-Host -Prompt "Press Enter to exit"
