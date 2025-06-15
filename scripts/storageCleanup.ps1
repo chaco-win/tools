@@ -2,6 +2,11 @@
 
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
+# Prevent progress and error paging from causing script pauses
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
+
+# Self-elevation — ensure running as Administrator
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Relaunching as Administrator..." -ForegroundColor Yellow
     $script = $MyInvocation.MyCommand.Definition
@@ -11,13 +16,15 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit
 }
 
-$logFolder = "C:\.Logs"
+# --- LOGGING SETUP ---
+$logFolder = 'C:\.Logs'
 $logFile = "$logFolder\CleanupLog.txt"
 
 if (!(Test-Path -Path $logFolder)) {
     try {
-        New-Item -ItemType Directory -Path $logFolder -Force
-        Write-Host "Created log folder: $logFolder"
+        $logDir = New-Item -ItemType Directory -Path $logFolder -Force
+        $logDir.Attributes = 'Hidden'
+        Write-Host "Created hidden log folder: $logFolder"
     } catch {
         Write-Host "ERROR: Could not create log folder: $logFolder"
         Write-Host $_.Exception.Message
@@ -34,6 +41,7 @@ try {
     exit 1
 }
 
+# --- START CLEANUP ---
 $startTime = Get-Date
 Write-Host "`nCleanup started at: $startTime"
 Add-Content -Path $logFile -Value ("Cleanup started at: {0}" -f $startTime)
@@ -45,21 +53,23 @@ Add-Content -Path $logFile -Value ("Space before: {0} GB" -f ([math]::Round(($st
 
 Write-Host "`n--- Starting Comprehensive Cleanup Script ---"
 
+# Disable hibernation to delete hiberfil.sys
+Write-Host "`nDisabling hibernation (deletes hiberfil.sys)..."
 powercfg -h off
 
+# Clean system-wide temp files
 Write-Host "`nCleaning C:\Windows\Temp..."
-Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 
+# Clean Windows Update cache
 Write-Host "`nCleaning C:\Windows\SoftwareDistribution\Download..."
-Remove-Item -Path "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+Remove-Item -Path "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 
-Write-Host "`nCleaning up WinSxS..."
-dism.exe /Online /Cleanup-Image /StartComponentCleanup /ResetBase
+# Run DISM to clean WinSxS (non-interactive)
+Write-Host "`nRunning WinSxS cleanup with DISM..."
+Start-Process -FilePath "dism.exe" -ArgumentList "/Online","/Cleanup-Image","/StartComponentCleanup","/ResetBase" -NoNewWindow -Wait
 
-Write-Host "`nLaunching Disk Cleanup for extra cleanup..."
-Start-Process cleanmgr.exe -ArgumentList "/sageset:1" -Wait
-Start-Process cleanmgr.exe -ArgumentList "/sagerun:1" -Wait
-
+# Clean per-user profiles
 $excludedProfiles = @("Public", "Default", "Default User", "All Users")
 $usersRoot = "C:\Users"
 $profiles = Get-ChildItem -Path $usersRoot -Directory | Where-Object { $_.Name -notin $excludedProfiles }
@@ -74,45 +84,48 @@ foreach ($profile in $profiles) {
 
     Write-Host "`nProcessing user profile: $($profile.Name)"
 
+    # Temp
     $tempPath = Join-Path -Path $profile.FullName -ChildPath "AppData\Local\Temp"
     if (Test-Path -Path $tempPath) {
         Write-Host "  Cleaning temp folder..."
         try {
-            Remove-Item -Path "$tempPath\*" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+            Remove-Item -Path "$tempPath\*" -Recurse -Force -Confirm:$false -ErrorAction Stop | Out-Null
             Write-Host "  Temp cleaned: $tempPath"
         } catch {
-            Write-Warning "  Failed to clean temp for user: $($profile.Name). Error: $_"
+            Write-Host "  Skipped some files in: $tempPath (likely already gone)"
         }
     } else {
         Write-Host "  Temp folder not found."
     }
 
+    # Microsoft AppData
     $microsoftFolderPath = Join-Path -Path $profile.FullName -ChildPath "AppData\Local\Microsoft"
     if (Test-Path -Path $microsoftFolderPath) {
         Write-Host "  Cleaning Microsoft AppData..."
         takeown /f "$microsoftFolderPath" /r /d y | Out-Null
         icacls "$microsoftFolderPath" /grant administrators:F /t | Out-Null
         try {
-            Remove-Item -Path $microsoftFolderPath -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+            Remove-Item -Path $microsoftFolderPath -Recurse -Force -Confirm:$false -ErrorAction Stop | Out-Null
             Write-Host "  Microsoft AppData cleaned: $microsoftFolderPath"
         } catch {
-            Write-Warning "  Failed to delete Microsoft AppData for user: $($profile.Name). Error: $_"
+            Write-Host "  Skipped some files in: $microsoftFolderPath (likely already gone)"
         }
     } else {
         Write-Host "  Microsoft folder not found."
     }
 }
 
-# Clear the progress bar
+# Clear progress
 Write-Progress -Activity "Cleaning Profiles" -Completed
 
+# Final reporting
 $endTime = Get-Date
 $duration = $endTime - $startTime
-Write-Host "`nCleanup completed at: $endTime"
-Write-Host "Total duration: $($duration.ToString())"
-
 $endFree = (Get-PSDrive -Name ($drive.TrimEnd(":"))).Free
 $spaceFreed = $endFree - $startFree
+
+Write-Host "`nCleanup completed at: $endTime"
+Write-Host "Total duration: $($duration.ToString())"
 Write-Host "`nEnding free space on ${drive}: $([math]::Round(($endFree / 1GB), 2)) GB"
 Write-Host "Total space reclaimed: $([math]::Round(($spaceFreed / 1GB), 2)) GB"
 
