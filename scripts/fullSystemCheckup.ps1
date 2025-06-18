@@ -81,26 +81,28 @@ if ($enabledBindings.Count -gt 0) {
     Write-Host "IPv6 was already disabled prior to running this script." -ForegroundColor White
 }
 
-# --------- PART 4: Checking for Any Available Updates ---------
-# === Checking for Any Available Updates (background) ===
-Write-Host "`n=== Starting Windows Update as a background job ===" -ForegroundColor Cyan
+# --------- PART 4: Start all updates (including drivers) as a background job ---------
+Write-Host "`n=== Starting Windows Update as a background job (all updates) ===" -ForegroundColor Cyan
+
+# Ensure PSWindowsUpdate is available
+if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+    Write-Host "PSWindowsUpdate module not found. Installing..." -ForegroundColor Yellow
+    Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Confirm:$false | Out-Null
+}
 Import-Module PSWindowsUpdate
 
-# 1. Grab everything to install
-$pendingUpdates = Get-WindowsUpdate -AcceptAll -IgnoreReboot
-Write-Host "Found $($pendingUpdates.Count) updates to install." -ForegroundColor Cyan
+# Grab the full list (drivers + patches)
+$allUpdates = Get-WindowsUpdate -AcceptAll -IgnoreReboot -ErrorAction SilentlyContinue
+Write-Host "Found $($allUpdates.Count) updates to install." -ForegroundColor Cyan
 
-# 2. Fire off the job, passing the list in
-$updateJob = Start-Job -ArgumentList ($pendingUpdates) -ScriptBlock {
-    param($updates)
+# Fire off a single job that installs _all_ of them
+$updateJob = Start-Job -ScriptBlock {
     Import-Module PSWindowsUpdate
-    $installed = foreach ($u in $updates) {
-        Install-WindowsUpdate -KBArticleID $u.KBArticleIDs -AcceptAll -IgnoreReboot -Confirm:$false |
-            Select-Object Title, KBArticleIDs
-    }
-    return $installed
+    Install-WindowsUpdate -AcceptAll -IgnoreReboot -Confirm:$false |
+      Select-Object Title, KBArticleIDs
 }
 Write-Host "Update job started with ID $($updateJob.Id)." -ForegroundColor Green
+
 # --------- PART 5: Offline Files cache usage ---------
 Write-Host "`nChecking Offline Files cache usage..." -ForegroundColor Cyan
 try {
@@ -190,48 +192,47 @@ try {
     Write-Warning "Something went wrong: $_"
 }
 
-# === Waiting for update job with 2-hour timeout ===
-Write-Host "`nWaiting up to 2 hours for update job (ID $($updateJob.Id)) to complete…" -ForegroundColor Cyan
+# --------- PART 11: Wait for update job (2-hour cap) & Log results ---------
+Write-Host "`nWaiting up to 2 hours for update job (ID $($updateJob.Id)) to complete..." -ForegroundColor Cyan
 $timeoutSec = 7200
 
-if (Wait-Job -Id $updateJob.Id -Timeout $timeoutSec) {
+if ( Wait-Job -Id $updateJob.Id -Timeout $timeoutSec ) {
     Write-Host "Update job completed." -ForegroundColor Green
     $completed = Receive-Job -Id $updateJob.Id
 
-    # List installed
     if ($completed) {
-        Write-Host "Installed updates:" -ForegroundColor Cyan
+        Write-Host "`nInstalled updates:" -ForegroundColor Cyan
         $completed | ForEach-Object { Write-Host " - $($_.Title)" }
-        $installedIDs = $completed | ForEach-Object { $_.KBArticleIDs }
 
-        # Anything left over?
-        $stuck = $pendingUpdates | Where-Object { $installedIDs -notcontains $_.KBArticleIDs }
+        # Anything truly stuck?
+        $installedTitles = $completed | ForEach-Object Title
+        $stuck = $allUpdates | Where-Object { $installedTitles -notcontains $_.Title }
         if ($stuck) {
-            Write-Host "Updates not installed (stuck):" -ForegroundColor Yellow
+            Write-Host "`nUpdates still pending (hung):" -ForegroundColor Yellow
             $stuck | ForEach-Object { Write-Host " - $($_.Title)" }
         }
     } else {
-        Write-Warning "No updates were reported as installed."
+        Write-Warning "No output returned from update job."
     }
 } else {
     Write-Warning "Timed out after $($timeoutSec/3600) hours."
-    # Grab any partial results
     $partial = Receive-Job -Id $updateJob.Id -Keep
     if ($partial) {
-        Write-Host "Partially installed before timeout:" -ForegroundColor Cyan
+        Write-Host "`nPartially installed before timeout:" -ForegroundColor Cyan
         $partial | ForEach-Object { Write-Host " - $($_.Title)" }
-        $partialIDs = $partial | ForEach-Object { $_.KBArticleIDs }
-        $stuck = $pendingUpdates | Where-Object { $partialIDs -notcontains $_.KBArticleIDs }
+        $partialTitles = $partial | ForEach-Object Title
+        $stuck = $allUpdates | Where-Object { $partialTitles -notcontains $_.Title }
         if ($stuck) {
-            Write-Host "Still not installed:" -ForegroundColor Yellow
+            Write-Host "`nStill not installed:" -ForegroundColor Yellow
             $stuck | ForEach-Object { Write-Host " - $($_.Title)" }
         }
     }
-    Stop-Job -Id $updateJob.Id | Out-Null
+    Stop-Job   -Id $updateJob.Id | Out-Null
 }
 
-# Cleanup
+# Cleanup job
 Remove-Job -Id $updateJob.Id | Out-Null
+
 
 
 # --------- FINAL: Exit Prompt ---------
