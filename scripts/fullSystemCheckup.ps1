@@ -82,41 +82,13 @@ if ($enabledBindings.Count -gt 0) {
 }
 
 # --------- PART 4: Checking for Any Available Updates ---------
-Write-Host "`n=== Checking for Any Available Updates (excluding drivers) ===" -ForegroundColor Cyan
-# Ensure PSWindowsUpdate is installed
-if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
-    Write-Host "PSWindowsUpdate module not found. Installing..." -ForegroundColor Yellow
-    Try {
-        Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Confirm:$false | Out-Null
-        Write-Host "PSWindowsUpdate installed successfully." -ForegroundColor Green
-    } Catch {
-        Write-Host "Failed to install PSWindowsUpdate: $_" -ForegroundColor Red
-        return
-    }
-}
-# Import PSWindowsUpdate
-Try {
-    Import-Module PSWindowsUpdate -ErrorAction Stop
-} Catch {
-    Write-Host "Unable to import PSWindowsUpdate. Skipping update check." -ForegroundColor Red
-    return
-}
-# Fetch all available updates, excluding driver updates
-$allUpdates = Get-WindowsUpdate -AcceptAll -IgnoreReboot -NotCategory "Drivers" -ErrorAction SilentlyContinue
-if ($allUpdates -and $allUpdates.Count -gt 0) {
-    Write-Host "Installing all available updates (excluding drivers)..." -ForegroundColor Cyan
-    foreach ($u in $allUpdates) {
-        Write-Host "Installing: $($u.Title)" -ForegroundColor Yellow
-        Try {
-            Install-WindowsUpdate -KBArticleID $u.KBArticleIDs -AcceptAll -IgnoreReboot -Confirm:$false | Out-Null
-        } Catch {
-            Write-Warning "Failed to install update $($u.KBArticleIDs): $_"
-        }
-    }
-    Write-Host "All updates installed (excluding drivers). No reboot yet." -ForegroundColor Green
-} else {
-    Write-Host "No updates found (excluding drivers)." -ForegroundColor Green
-}
+# === Checking for Any Available Updates (background) ===
+Write-Host "`n=== Starting Windows Update as a background job ===" -ForegroundColor Cyan
+Import-Module PSWindowsUpdate
+
+# Start update install as a job
+$updateJob = Install-WindowsUpdate -AcceptAll -IgnoreReboot -Confirm:$false -AsJob
+Write-Host "Update job started with ID $($updateJob.Id)." -ForegroundColor Green
 
 # --------- PART 5: Offline Files cache usage ---------
 Write-Host "`nChecking Offline Files cache usage..." -ForegroundColor Cyan
@@ -206,6 +178,13 @@ try {
 } catch {
     Write-Warning "Something went wrong: $_"
 }
+
+# === Waiting for and retrieving the update job ===
+Write-Host "`nWaiting for update job to complete (Job ID $($updateJob.Id))..." -ForegroundColor Cyan
+Wait-Job -Id $updateJob.Id
+
+Write-Host "Update job finished. Output:" -ForegroundColor Cyan
+Receive-Job -Id $updateJob.Id | ForEach-Object { Write-Host $_ }
 
 # --------- FINAL: Exit Prompt ---------
 Write-Host "`n========================================" -ForegroundColor Blue
