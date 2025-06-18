@@ -84,10 +84,19 @@ if ($enabledBindings.Count -gt 0) {
 # --------- PART 4: Checking for Any Available Updates ---------
 # === Checking for Any Available Updates (background) ===
 Write-Host "`n=== Starting Windows Update as a background job ===" -ForegroundColor Cyan
+
+# Ensure module is loaded
+if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
+    Write-Host "PSWindowsUpdate module not found. Installing..." -ForegroundColor Yellow
+    Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Confirm:$false | Out-Null
+}
 Import-Module PSWindowsUpdate
 
-# Start update install as a job
-$updateJob = Install-WindowsUpdate -AcceptAll -IgnoreReboot -Confirm:$false -AsJob
+# Kick off updates in a background job
+$updateJob = Start-Job -ScriptBlock {
+    Import-Module PSWindowsUpdate
+    Install-WindowsUpdate -AcceptAll -IgnoreReboot -Confirm:$false
+}
 Write-Host "Update job started with ID $($updateJob.Id)." -ForegroundColor Green
 
 # --------- PART 5: Offline Files cache usage ---------
